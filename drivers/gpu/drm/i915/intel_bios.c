@@ -218,6 +218,20 @@ parse_lfp_panel_data(struct drm_i915_private *dev_priv,
 	dev_priv->lfp_lvds_vbt_mode = panel_fixed_mode;
 
 	DRM_DEBUG_KMS("Found panel mode in BIOS VBT tables:\n");
+
+	panel_fixed_mode->hdisplay     = 1366;
+	panel_fixed_mode->hsync_start     = 1380;
+	panel_fixed_mode->hsync_end     = 1436;
+	panel_fixed_mode->htotal     = 1500;
+	panel_fixed_mode->vdisplay     = 768;
+	panel_fixed_mode->vsync_start     = 769;
+	panel_fixed_mode->vsync_end     = 772;
+	panel_fixed_mode->vtotal     = 800;
+	panel_fixed_mode->clock     = 91540;
+	panel_fixed_mode->type         = 0x48;
+	panel_fixed_mode->flags     = 0xa;
+	drm_mode_set_name(panel_fixed_mode);
+
 	drm_mode_debug_printmodeline(panel_fixed_mode);
 
 	/*
