@@ -197,6 +197,8 @@ struct bcma_bus {
 	/* We decided to share SPROM struct with SSB as long as we do not need
 	 * any hacks for BCMA. This simplifies drivers code. */
 	struct ssb_sprom sprom;
+
+	struct list_head node;
 };
 
 extern inline u32 bcma_read8(struct bcma_device *core, u16 offset)

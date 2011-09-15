@@ -12,10 +12,40 @@
 MODULE_DESCRIPTION("Broadcom's specific AMBA driver");
 MODULE_LICENSE("GPL");
 
+extern int bcma_sprom_get_raw(struct bcma_bus *bus, u16 **sprom, size_t *len);
+
 static int bcma_bus_match(struct device *dev, struct device_driver *drv);
 static int bcma_device_probe(struct device *dev);
 static int bcma_device_remove(struct device *dev);
 static int bcma_device_uevent(struct device *dev, struct kobj_uevent_env *env);
+
+DECLARE_RWSEM(bcma_bus_sem);
+LIST_HEAD(bcma_buses);
+
+static ssize_t sprom_show(struct bus_type *bus, char *buf)
+{
+	struct bcma_bus *b;
+	ssize_t written = 0;
+	size_t len = 0;
+	u16 *sprom = NULL;
+
+	down_read(&bcma_bus_sem);
+	b = list_entry(bcma_buses.next, struct bcma_bus, node);
+	up_read(&bcma_bus_sem);
+
+	if (!bcma_sprom_get_raw(b, &sprom, &len)) {
+		pr_info("page_size=%lu, sprom len=%lu\n", PAGE_SIZE, len);
+		written = PAGE_SIZE < len ? PAGE_SIZE : len;
+		memcpy(buf, (char *)sprom, written);
+		kfree(sprom);
+	}
+
+	return written;
+}
+static struct bus_attribute bcma_bus_attrs[] = {
+	__ATTR(sprom, (S_IRUSR|S_IRGRP), sprom_show, NULL),
+	__ATTR_NULL,
+};
 
 static ssize_t manuf_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
@@ -47,6 +77,7 @@ static struct device_attribute bcma_device_attrs[] = {
 
 static struct bus_type bcma_bus_type = {
 	.name		= "bcma",
+	.bus_attrs  = bcma_bus_attrs,
 	.match		= bcma_bus_match,
 	.probe		= bcma_device_probe,
 	.remove		= bcma_device_remove,
@@ -161,6 +192,11 @@ int bcma_bus_register(struct bcma_bus *bus)
 	/* Register found cores */
 	bcma_register_cores(bus);
 
+	//WARN_ON(in_interrupt());
+	down_write(&bcma_bus_sem);
+	list_add_tail(&bus->node, &bcma_buses);
+	up_write(&bcma_bus_sem);
+
 	pr_info("Bus registered\n");
 
 	return 0;
@@ -168,6 +204,10 @@ int bcma_bus_register(struct bcma_bus *bus)
 
 void bcma_bus_unregister(struct bcma_bus *bus)
 {
+	down_write(&bcma_bus_sem);
+	list_del(&bus->node);
+	up_write(&bcma_bus_sem);
+
 	bcma_unregister_cores(bus);
 }
 
