@@ -56,4 +56,6 @@
 #define  BCMA_PCI_GPIO_XTAL		0x40	/* PCI config space GPIO 14 for Xtal powerup */
 #define  BCMA_PCI_GPIO_PLL		0x80	/* PCI config space GPIO 15 for PLL powerdown */
 
+#define BCMA_SPROM255_IL0MAC		0x5C	/* 6 byte MAC address */
+
 #endif /* LINUX_BCMA_REGS_H_ */

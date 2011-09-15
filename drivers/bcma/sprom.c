@@ -102,18 +102,17 @@ static int bcma_sprom_check_crc(const u16 *sprom)
 	return 0;
 }
 
-static int bcma_sprom_valid(const u16 *sprom)
+static int bcma_sprom_valid(const u16 *sprom, u16 *revision)
 {
-	u16 revision;
 	int err;
 
 	err = bcma_sprom_check_crc(sprom);
 	if (err)
 		return err;
 
-	revision = sprom[SSB_SPROMSIZE_WORDS_R4 - 1] & SSB_SPROM_REVISION_REV;
-	if (revision != 8 && revision != 9) {
-		pr_err("Unsupported SPROM revision: %d\n", revision);
+	*revision = sprom[SSB_SPROMSIZE_WORDS_R4 - 1] & SSB_SPROM_REVISION_REV;
+	if (*revision != 8 && *revision != 9 && *revision != 255) {
+		pr_err("Unsupported SPROM revision: %d\n", *revision);
 		return -ENOENT;
 	}
 
@@ -129,16 +128,27 @@ static void bcma_sprom_extract_r8(struct bcma_bus *bus, const u16 *sprom)
 	u16 v;
 	int i;
 
+	pr_info("mac offset=0x%x, SPOFF'd=0x%lx", SSB_SPROM8_IL0MAC, SPOFF(SSB_SPROM8_IL0MAC));
 	for (i = 0; i < 3; i++) {
 		v = sprom[SPOFF(SSB_SPROM8_IL0MAC) + i];
 		*(((__be16 *)bus->sprom.il0mac) + i) = cpu_to_be16(v);
 	}
 }
 
-int bcma_sprom_get(struct bcma_bus *bus)
+static void bcma_sprom_extract_r255(struct bcma_bus *bus, const u16 *sprom)
+{
+	u16 v;
+	int i;
+
+	for (i = 0; i < 3; i++) {
+		v = sprom[SPOFF(BCMA_SPROM255_IL0MAC) + i];
+		*(((__be16 *)bus->sprom.il0mac) + i) = cpu_to_be16(v);
+	}
+}
+
+int bcma_sprom_get_raw(struct bcma_bus *bus, u16 *revision, u16 **sprom, size_t *len)
 {
 	u16 offset;
-	u16 *sprom;
 	int err = 0;
 
 	if (!bus->drv_cc.core)
@@ -147,9 +157,9 @@ int bcma_sprom_get(struct bcma_bus *bus)
 	if (!(bus->drv_cc.capabilities & BCMA_CC_CAP_SPROM))
 		return -ENOENT;
 
-	sprom = kcalloc(SSB_SPROMSIZE_WORDS_R4, sizeof(u16),
+	*sprom = kcalloc(SSB_SPROMSIZE_WORDS_R4, sizeof(u16),
 			GFP_KERNEL);
-	if (!sprom)
+	if (!*sprom)
 		return -ENOMEM;
 
 	/* Most cards have SPROM moved by additional offset 0x30 (48 dwords).
@@ -157,15 +167,38 @@ int bcma_sprom_get(struct bcma_bus *bus)
 	 * TODO: understand this condition and use it */
 	offset = (bus->chipinfo.id == 0x4331) ? BCMA_CC_SPROM :
 		BCMA_CC_SPROM_PCIE6;
-	bcma_sprom_read(bus, offset, sprom);
+	bcma_sprom_read(bus, offset, *sprom);
 
-	err = bcma_sprom_valid(sprom);
+	err = bcma_sprom_valid(*sprom, revision);
 	if (err)
 		goto out;
 
-	bcma_sprom_extract_r8(bus, sprom);
+	*len = SSB_SPROMSIZE_WORDS_R4 * sizeof(u16);
 
 out:
+	if (err) {
+		kfree(*sprom);
+		*sprom = NULL;
+	}
+
+	return err;
+}
+
+int bcma_sprom_get(struct bcma_bus *bus)
+{
+	u16 *sprom = NULL;
+	size_t len = 0;
+	u16 revision;
+	int err;
+
+	err = bcma_sprom_get_raw(bus, &revision, &sprom, &len);
+	if (!err) {
+		if (revision == 8 || revision == 9)
+			bcma_sprom_extract_r8(bus, sprom);
+		else if (revision == 255)
+			bcma_sprom_extract_r255(bus, sprom);
+	}
+
 	kfree(sprom);
 	return err;
 }
